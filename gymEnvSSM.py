@@ -44,7 +44,7 @@ class raw_env(AECEnv, EzPickle):
 
     def __init__(self, n_elements=256, local_ratio=0, time_penalty=-0.1, continuous=True, random_drop=True, random_rotate=True, ball_mass=0.75, ball_friction=0.3, ball_elasticity=1.5, max_cycles=125):
         EzPickle.__init__(self, n_elements, local_ratio, time_penalty, continuous, random_drop, random_rotate, ball_mass, ball_friction, ball_elasticity, max_cycles)
-        self.n_elements = 4
+        self.n_elements = 16
         im = cv2.imread('body.png')
         h,w,c = im.shape
         self.element_body_height = h
@@ -114,7 +114,7 @@ class raw_env(AECEnv, EzPickle):
 
         self.screen.fill((0, 0, 0))
         self.draw_background()
-        # self.screen.blit(self.background, (0, 0))
+        self.screen.blit(self.background, (0, 0))
 
         self.render_rect = pygame.Rect(
             self.wall_width,   # Left
@@ -220,7 +220,7 @@ class raw_env(AECEnv, EzPickle):
     def move_element(self, element, v):
 
         def cap(y):
-            maximum_element_y = self.screen_height - self.wall_width - (self.element_height - self.element_head_height)
+            maximum_element_y = self.screen_height - self.elementPosVert[self.elementList.index(element)] # self.screen_height - self.wall_width - (self.element_height - self.element_head_height)
             if y > maximum_element_y:
                 y = maximum_element_y
             elif y < maximum_element_y - (self.n_element_positions * self.pixels_per_position):
@@ -247,23 +247,23 @@ class raw_env(AECEnv, EzPickle):
                 possible_y_displacements = np.arange(0, self.pixels_per_position * self.n_element_positions,
                                                          self.pixels_per_position)
                 if (j == 0):
-                    elemPos = self.screen_height - 3.25 * self.element_height - self.element_height * (i*0.6)
+                    elemPos = self.screen_height - 360 + self.element_body_height * (i*0.45)
                     maximum_element_y = self.screen_height - elemPos
                     element = self.add_element(
                         self.space,
                         # self.wall_width + self.element_radius + self.element_width * i,       # x position
                         # maximum_element_y - self.np_random.choice(possible_y_displacements)  # y position
-                        self.screen_width/2 - self.element_width/1.9 - self.element_width * 0.6 * i,
+                        self.screen_width/2 - self.element_width/2.6 - self.element_width * 0.6 * i,
                         maximum_element_y - self.np_random.choice(possible_y_displacements)
                     )
                 else:
-                    elemPos = self.elementPosVert[i * j - 1] - self.element_height/1.8
+                    elemPos = self.elementPosVert[len(self.elementPosVert) - 1] + self.element_body_height*0.45
                     maximum_element_y = self.screen_height - elemPos
                     element = self.add_element(
                         self.space,
                         # self.wall_width + self.element_radius + self.element_width * i,       # x position
                         # maximum_element_y - self.np_random.choice(possible_y_displacements)  # y position
-                        self.elementList[i * j - 1].position[0] + self.element_width/1.8,
+                        self.elementList[len(self.elementPosVert) - 1].position[0] + self.element_width*0.6,
                         maximum_element_y - self.np_random.choice(possible_y_displacements)
                     )
                 element.velociy = 0 #TODO: fix typo
@@ -342,6 +342,7 @@ class raw_env(AECEnv, EzPickle):
 
     def draw_elements(self):
         element_color = (56, 129, 197)
+        black = (0,0,0)
         i = 0
         for element in self.elementList:
             # Height is the size of the blue part of the element.
@@ -351,14 +352,35 @@ class raw_env(AECEnv, EzPickle):
             self.screen.blit(self.element_body_sprite, (
                 element.position[0] + self.element_radius , element.position[1] + self.element_radius))
             body_rect = pygame.Rect(
-                element.position[0] + self.element_radius,    # +1 to match up to element graphics
+                element.position[0] + self.element_radius+1,    # +1 to match up to element graphics
                 element.position[1] + self.element_radius + self.element_body_height/2,
-                self.element_width - 1,
+                self.element_width - 2,
                 height + self.element_body_height*1.2 - (self.screen_height - self.elementPosVert[i])
+            )
+            line1 = pygame.Rect(
+                element.position[0] + self.element_radius +1,    # +1 to match up to element graphics
+                element.position[1] + self.element_radius + self.element_body_height/2,
+                1,
+                height + self.element_body_height*1.2 - (self.screen_height - self.elementPosVert[i])
+            )
+            line2 = pygame.Rect(
+                element.position[0] + self.element_radius + 12,  # +1 to match up to element graphics
+                element.position[1] + self.element_radius + self.element_body_height / 2,
+                1,
+                height + self.element_body_height * 1.2 - (self.screen_height - self.elementPosVert[i])
+            )
+            line3 = pygame.Rect(
+                element.position[0] + self.element_radius + self.element_width - 2,  # +1 to match up to element graphics
+                element.position[1] + self.element_radius + self.element_body_height / 2,
+                1,
+                height + self.element_body_height * 1.2 - (self.screen_height - self.elementPosVert[i])
             )
             i += 1
             pygame.draw.rect(self.screen, element_color, body_rect)
-
+            pygame.draw.rect(self.screen, black, line1)
+            pygame.draw.rect(self.screen, black, line2)
+            pygame.draw.rect(self.screen, black, line3)
+            self.screen.blit(self.element_sprite, (element.position[0] - self.element_radius, element.position[1] - self.element_radius - self.element_height / 2.5))
 
     def draw(self):
         # redraw the background image if ball goes outside valid position
@@ -381,8 +403,8 @@ class raw_env(AECEnv, EzPickle):
         pygame.draw.line(self.screen, color, (ball_x, ball_y), (line_end_x, line_end_y), 3)  # 39 because it kept sticking over by 1 at 40
 
         self.draw_elements()#draw element bodies before elements so they don't cover each-other up
-        for element in self.elementList:
-            self.screen.blit(self.element_sprite, (element.position[0] - self.element_radius, element.position[1] - self.element_radius - self.element_height/2.5))
+        # for element in self.elementList:
+        #     self.screen.blit(self.element_sprite, (element.position[0] - self.element_radius, element.position[1] - self.element_radius - self.element_height/2.5))
 
 
     def get_nearby_elements(self):

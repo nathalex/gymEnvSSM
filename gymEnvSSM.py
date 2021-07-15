@@ -14,6 +14,7 @@ from pettingzoo.utils import wrappers
 from gym.utils import EzPickle
 from pettingzoo.utils.conversions import parallel_wrapper_fn
 import cv2
+from gym import spaces
 
 _image_library = {}
 
@@ -44,7 +45,7 @@ class raw_env(AECEnv, EzPickle):
 
     def __init__(self, n_elements=256, local_ratio=0, time_penalty=-0.1, continuous=True, random_drop=True, random_rotate=True, ball_mass=0.75, ball_friction=0.3, ball_elasticity=1.5, max_cycles=125):
         EzPickle.__init__(self, n_elements, local_ratio, time_penalty, continuous, random_drop, random_rotate, ball_mass, ball_friction, ball_elasticity, max_cycles)
-        self.n_elements = 16
+        self.n_elements = 25
         im = cv2.imread('body.png')
         h,w,c = im.shape
         self.element_body_height = h
@@ -83,6 +84,11 @@ class raw_env(AECEnv, EzPickle):
             self.action_spaces = dict(zip(self.agents, [gym.spaces.Discrete(3)] * self.n_elements))
         self.state_space = gym.spaces.Box(low=0, high=255, shape=(self.screen_height, self.screen_width, 3), dtype=np.uint8)
 
+        # Define action and observation space
+        # They must be gym.spaces objects
+        # Example when using discrete actions, we have two: left and right
+        self.action_space = spaces.Discrete(2)
+
         pygame.init()
         pymunk.pygame_util.positive_y_is_up = False
 
@@ -97,7 +103,7 @@ class raw_env(AECEnv, EzPickle):
         self.random_rotate = random_rotate
 
         self.elementList = []
-        self.elementPosVert = [] #Keeps track of vertical positions of elements
+        self.elementPosVert = []  #Keeps track of vertical positions of elements
         self.elementRewards = []     # Keeps track of individual rewards
         self.recentFrameLimit = 20  # Defines what "recent" means in terms of number of frames.
         self.recentelements = set()  # Set of elements that have touched the ball recently
@@ -110,7 +116,7 @@ class raw_env(AECEnv, EzPickle):
         self.done = False
 
         self.pixels_per_position = 4
-        self.n_element_positions = 16
+        self.n_element_positions = 25
 
         self.screen.fill((0, 0, 0))
         self.draw_background()
@@ -242,28 +248,29 @@ class raw_env(AECEnv, EzPickle):
         maximum_element_y = 0
         for i in range(int(math.sqrt(self.n_elements))):
             for j in range(int(math.sqrt(self.n_elements))):
+                # print("I get here: " + str(len(self.elementPosVert)) + "\n")
                 element = None
                 elemPos = None
                 possible_y_displacements = np.arange(0, self.pixels_per_position * self.n_element_positions,
                                                          self.pixels_per_position)
                 if (j == 0):
-                    elemPos = self.screen_height - 360 + self.element_body_height * (i*0.45)
+                    elemPos = self.screen_height - 434 + (i * 0.53 * self.element_height)
                     maximum_element_y = self.screen_height - elemPos
                     element = self.add_element(
                         self.space,
                         # self.wall_width + self.element_radius + self.element_width * i,       # x position
                         # maximum_element_y - self.np_random.choice(possible_y_displacements)  # y position
-                        self.screen_width/2 - self.element_width/2.6 - self.element_width * 0.6 * i,
+                        self.screen_width / 2 - self.element_width / 3.9 - (self.element_width * 0.67* i),
                         maximum_element_y - self.np_random.choice(possible_y_displacements)
                     )
                 else:
-                    elemPos = self.elementPosVert[len(self.elementPosVert) - 1] + self.element_body_height*0.45
+                    elemPos = self.elementPosVert[len(self.elementPosVert) -1] + (0.59 * self.element_height)
                     maximum_element_y = self.screen_height - elemPos
                     element = self.add_element(
                         self.space,
                         # self.wall_width + self.element_radius + self.element_width * i,       # x position
                         # maximum_element_y - self.np_random.choice(possible_y_displacements)  # y position
-                        self.elementList[len(self.elementPosVert) - 1].position[0] + self.element_width*0.6,
+                        self.elementList[len(self.elementPosVert) - 1].position[0] + (self.element_width*0.65),
                         maximum_element_y - self.np_random.choice(possible_y_displacements)
                     )
                 element.velociy = 0 #TODO: fix typo
@@ -273,7 +280,7 @@ class raw_env(AECEnv, EzPickle):
         self.horizontal_offset = 0
         self.vertical_offset = 0
         horizontal_offset_range = 30
-        vertical_offset_range = 15
+        vertical_offset_range = 30
         if self.random_drop:
             self.vertical_offset = self.np_random.randint(-vertical_offset_range, vertical_offset_range + 1)
             self.horizontal_offset = self.np_random.randint(-horizontal_offset_range, horizontal_offset_range + 1)
@@ -348,7 +355,7 @@ class raw_env(AECEnv, EzPickle):
             # Height is the size of the blue part of the element.
             height = self.screen_height - self.wall_width - self.element_body_height - (element.position[1] + self.element_radius) + (self.element_body_height)
             self.screen.blit(self.element_body_sprite, (
-                element.position[0] + self.element_radius, self.elementPosVert[i]))#element.position[1] + self.element_radius))
+                element.position[0] + self.element_radius, self.elementPosVert[i]))
             self.screen.blit(self.element_body_sprite, (
                 element.position[0] + self.element_radius , element.position[1] + self.element_radius))
             body_rect = pygame.Rect(

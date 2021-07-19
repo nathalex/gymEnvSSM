@@ -9,13 +9,16 @@ import gym
 from gym.utils import seeding
 from pettingzoo import AECEnv
 from pettingzoo.utils import agent_selector
-import manual_control
 from pettingzoo.utils import wrappers
 from gym.utils import EzPickle
 from pettingzoo.utils.conversions import parallel_wrapper_fn
 import cv2
+import manual_control
 
-# TODO: deal with ball situation
+# TODO list in order of priority:
+# TODO: rewrite step and reward functions, integrated with the GS output
+# TODO: write policy function!!
+# TODO: visualisation: have a number display in pygame on the top of each element. This number corresponds to the coalition identifier of that element.
 
 _image_library = {}
 
@@ -44,8 +47,8 @@ class raw_env(AECEnv, EzPickle):
 
     metadata = {'render.modes': ['human', "rgb_array"], 'name': "gymEnvSSM"}
 
-    def __init__(self, n_elements=256, local_ratio=0, time_penalty=-0.1, continuous=True, random_drop=True, random_rotate=True, ball_mass=0.75, ball_friction=0.3, ball_elasticity=1.5, max_cycles=125):
-        EzPickle.__init__(self, n_elements, local_ratio, time_penalty, continuous, random_drop, random_rotate, ball_mass, ball_friction, ball_elasticity, max_cycles)
+    def __init__(self, n_elements=256, local_ratio=0, time_penalty=-0.1, continuous=True, max_cycles=125):
+        EzPickle.__init__(self, n_elements, local_ratio, time_penalty, continuous, max_cycles)
         self.n_elements = n_elements
         im = cv2.imread('body.png')
         h,w,c = im.shape
@@ -57,17 +60,13 @@ class raw_env(AECEnv, EzPickle):
         self.element_width = w
         self.element_radius = 0
         self.wall_width = w
-        self.ball_radius = 5
         # self.screen_width = (2 * self.wall_width) + (self.element_width * self.n_elements)
         im = cv2.imread('background.png')
         h,w,c = im.shape
         self.screen_width = w
         self.screen_height = h
-        # y_high = self.screen_height - self.wall_width - self.element_body_height
-        # y_low = self.wall_width
-        # obs_height = y_high - y_low #potentially the issue
-        obs_height = h
-        obs_width = w
+        obs_height = 855-472
+        obs_width = 625 - 37
 
 
         assert self.element_width == self.wall_width, "Wall width and element width must be equal for observation calculation"
@@ -98,8 +97,6 @@ class raw_env(AECEnv, EzPickle):
         self.element_sprite = get_image('element.png')
         self.element_body_sprite = get_image('body.png')
         self.background = get_image('background.png')
-        self.random_drop = random_drop
-        self.random_rotate = random_rotate
 
         self.elementList = []
         self.elementPosVert = []  #Keeps track of vertical positions of elements
@@ -108,9 +105,6 @@ class raw_env(AECEnv, EzPickle):
         self.recentelements = set()  # Set of elements that have touched the ball recently
         self.time_penalty = time_penalty
         self.local_ratio = local_ratio
-        self.ball_mass = ball_mass
-        self.ball_friction = ball_friction
-        self.ball_elasticity = ball_elasticity
 
         self.done = False
 
@@ -126,14 +120,6 @@ class raw_env(AECEnv, EzPickle):
             self.wall_width,   # Top
             self.screen_width - (2 * self.wall_width),                              # Width
             self.screen_height - (2 * self.wall_width) - self.element_body_height    # Height
-        )
-
-        # Blit background image if ball goes out of bounds. Ball radius is 5
-        self.valid_ball_position_rect = pygame.Rect(
-            self.render_rect.left + self.ball_radius,          # Left
-            self.render_rect.top + self.ball_radius,           # Top
-            self.render_rect.width - (2 * self.ball_radius),   # Width
-            self.render_rect.height - (2 * self.ball_radius)   # Height
         )
 
         self.frames = 0
@@ -198,21 +184,6 @@ class raw_env(AECEnv, EzPickle):
             wall.friction = .64
             self.space.add(wall)
 
-    def add_ball(self, x, y, b_mass, b_friction, b_elasticity):
-        mass = b_mass
-        radius = 5
-        inertia = pymunk.moment_for_circle(mass, 0, radius, (0, 0))
-        body = pymunk.Body(mass, inertia)
-        body.position = x, y
-        # radians per second
-        if self.random_rotate:
-            body.angular_velocity = self.np_random.uniform(-6 * math.pi, 6 * math.pi)
-        shape = pymunk.Circle(body, radius, (0, 0))
-        shape.friction = b_friction
-        shape.elasticity = b_elasticity
-        self.space.add(body, shape)
-        return body
-
     def add_element(self, space, x, y):
         element = pymunk.Body(body_type=pymunk.Body.KINEMATIC)
         element.position = x, y
@@ -244,12 +215,8 @@ class raw_env(AECEnv, EzPickle):
 
         self.elementList = []
         self.elementPosVert = []
-        maximum_element_y = 0
         for i in range(int(math.sqrt(self.n_elements))):
             for j in range(int(math.sqrt(self.n_elements))):
-                # print("I get here: " + str(len(self.elementPosVert)) + "\n")
-                element = None
-                elemPos = None
                 possible_y_displacements = np.arange(0, self.pixels_per_position * self.n_element_positions,
                                                          self.pixels_per_position)
                 if (j == 0):
@@ -272,38 +239,6 @@ class raw_env(AECEnv, EzPickle):
                 self.elementList.append(element)
                 self.elementPosVert.append(elemPos)
 
-        self.horizontal_offset = 0
-        self.vertical_offset = 0
-        horizontal_offset_range = 30
-        vertical_offset_range = 30
-        if self.random_drop:
-            self.vertical_offset = self.np_random.randint(-vertical_offset_range, vertical_offset_range + 1)
-            self.horizontal_offset = self.np_random.randint(-horizontal_offset_range, horizontal_offset_range + 1)
-        ball_x = (self.screen_width
-                  - self.wall_width
-                  - self.ball_radius
-                  - horizontal_offset_range
-                  + self.horizontal_offset)
-        ball_y = (self.screen_height
-                  - self.wall_width
-                  - self.element_body_height
-                  - self.ball_radius
-                  - (0.5 * self.pixels_per_position * self.n_element_positions)
-                  - vertical_offset_range
-                  + self.vertical_offset)
-
-        # Ensure ball starts somewhere right of the left wall
-        ball_x = max(ball_x, self.wall_width + self.ball_radius + 1)
-
-        self.ball = self.add_ball(ball_x, ball_y, self.ball_mass, self.ball_friction, self.ball_elasticity)
-        self.ball.angle = 0
-        self.ball.velocity = (0, 0)
-        if self.random_rotate:
-            self.ball.angular_velocity = self.np_random.uniform(-6 * math.pi, 6 * math.pi)
-
-        self.lastX = int(self.ball.position[0] - self.ball_radius)
-        self.distance = self.lastX - self.wall_width
-
         self.draw_background()
         self.draw()
 
@@ -320,7 +255,6 @@ class raw_env(AECEnv, EzPickle):
         self.infos = dict(zip(self.agents, [{} for _ in self.agents]))
 
         self.frames = 0
-        #print("I get here")
 
     def draw_background(self):
 
@@ -386,49 +320,9 @@ class raw_env(AECEnv, EzPickle):
             self.screen.blit(self.element_sprite, (element.position[0] - self.element_radius, element.position[1] - self.element_radius - self.element_height / 2.5))
 
     def draw(self):
-        # redraw the background image if ball goes outside valid position
-        if not self.valid_ball_position_rect.collidepoint(self.ball.position):
-            # self.screen.blit(self.background, (0, self.screen_height))
-            self.draw_background()
-
-        ball_x = int(self.ball.position[0])
-        ball_y = int(self.ball.position[1])
-
-        # color = (255, 255, 255)
-        # pygame.draw.rect(self.screen, color, self.render_rect)
         self.draw_background()
-        color = (65, 159, 221)
-        pygame.draw.circle(self.screen, color, (ball_x, ball_y), self.ball_radius)
 
-        line_end_x = ball_x + (self.ball_radius - 1) * np.cos(self.ball.angle)
-        line_end_y = ball_y + (self.ball_radius - 1) * np.sin(self.ball.angle)
-        color = (58, 64, 65)
-        pygame.draw.line(self.screen, color, (ball_x, ball_y), (line_end_x, line_end_y), 3)  # 39 because it kept sticking over by 1 at 40
-
-        self.draw_elements()#draw element bodies before elements so they don't cover each-other up
-        # for element in self.elementList:
-        #     self.screen.blit(self.element_sprite, (element.position[0] - self.element_radius, element.position[1] - self.element_radius - self.element_height/2.5))
-
-
-    def get_nearby_elements(self):
-        # first element = leftmost
-        nearby_elements = []
-        ball_pos = int(self.ball.position[0] - self.ball_radius)
-        closest = abs(self.elementList[0].position.x - ball_pos)
-        closest_element_index = 0
-        for i in range(self.n_elements):
-            next_distance = abs(self.elementList[i].position.x - ball_pos)
-            if next_distance < closest:
-                closest = next_distance
-                closest_element_index = i
-
-        if closest_element_index > 0:
-            nearby_elements.append(closest_element_index - 1)
-        nearby_elements.append(closest_element_index)
-        if closest_element_index < self.n_elements - 1:
-            nearby_elements.append(closest_element_index + 1)
-
-        return nearby_elements
+        self.draw_elements()
 
     def get_local_reward(self, prev_position, curr_position):
         local_reward = .5 * (prev_position - curr_position)
@@ -456,21 +350,21 @@ class raw_env(AECEnv, EzPickle):
 
         self.space.step(1 / 20.0)
         if self._agent_selector.is_last():
-            ball_min_x = int(self.ball.position[0] - self.ball_radius)
-            if ball_min_x <= self.wall_width + 1:
-                self.done = True
+            # ball_min_x = int(self.ball.position[0] - self.ball_radius)
+            # if ball_min_x <= self.wall_width + 1:
+            #     self.done = True
             self.draw()
-            local_reward = self.get_local_reward(self.lastX, ball_min_x)
+            # local_reward = self.get_local_reward(self.lastX, ball_min_x)
             # Opposite order due to moving right to left
-            global_reward = (100 / self.distance) * (self.lastX - ball_min_x)
+            global_reward = 0
             if not self.done:
                 global_reward += self.time_penalty
             total_reward = [global_reward * (1 - self.local_ratio)] * self.n_elements  # start with global reward
-            local_elements_to_reward = self.get_nearby_elements()
-            for index in local_elements_to_reward:
-                total_reward[index] += local_reward * self.local_ratio
+            # local_elements_to_reward = self.get_nearby_elements()
+            # for index in local_elements_to_reward:
+            #     total_reward[index] += local_reward * self.local_ratio
             self.rewards = dict(zip(self.agents, total_reward))
-            self.lastX = ball_min_x
+            # self.lastX = ball_min_x
             self.frames += 1
         else:
             self._clear_rewards()

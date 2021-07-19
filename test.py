@@ -4,9 +4,7 @@ import SSM
 import supersuit as ss
 import gym
 
-env = SSM.parallel_env(n_elements=256, local_ratio=0, time_penalty=-0.1, continuous=True,
-                                 random_drop=True, random_rotate=True, ball_mass=0.75, ball_friction=0.3,
-                                 ball_elasticity=1.5, max_cycles=125)
+env = SSM.parallel_env(n_elements=256, local_ratio=0, time_penalty=-0.1, continuous=True, max_cycles=125)
 env = ss.color_reduction_v0(env, mode='B')
 env = ss.resize_v0(env,x_size=84, y_size=84, linear_interp=True)
 env = ss.frame_stack_v1(env, 3)

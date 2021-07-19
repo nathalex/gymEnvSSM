@@ -14,7 +14,8 @@ from pettingzoo.utils import wrappers
 from gym.utils import EzPickle
 from pettingzoo.utils.conversions import parallel_wrapper_fn
 import cv2
-from gym import spaces
+
+# TODO: deal with ball situation
 
 _image_library = {}
 
@@ -45,7 +46,7 @@ class raw_env(AECEnv, EzPickle):
 
     def __init__(self, n_elements=256, local_ratio=0, time_penalty=-0.1, continuous=True, random_drop=True, random_rotate=True, ball_mass=0.75, ball_friction=0.3, ball_elasticity=1.5, max_cycles=125):
         EzPickle.__init__(self, n_elements, local_ratio, time_penalty, continuous, random_drop, random_rotate, ball_mass, ball_friction, ball_elasticity, max_cycles)
-        self.n_elements = 25
+        self.n_elements = n_elements
         im = cv2.imread('body.png')
         h,w,c = im.shape
         self.element_body_height = h
@@ -62,9 +63,11 @@ class raw_env(AECEnv, EzPickle):
         h,w,c = im.shape
         self.screen_width = w
         self.screen_height = h
-        y_high = self.screen_height - self.wall_width - self.element_body_height
-        y_low = self.wall_width
-        obs_height = y_high - y_low
+        # y_high = self.screen_height - self.wall_width - self.element_body_height
+        # y_low = self.wall_width
+        # obs_height = y_high - y_low #potentially the issue
+        obs_height = h
+        obs_width = w
 
 
         assert self.element_width == self.wall_width, "Wall width and element width must be equal for observation calculation"
@@ -76,7 +79,7 @@ class raw_env(AECEnv, EzPickle):
         self._agent_selector = agent_selector(self.agents)
 
         self.observation_spaces = dict(
-            zip(self.agents, [gym.spaces.Box(low=0, high=255, shape=(obs_height, self.element_width * 3, 3), dtype=np.uint8)] * self.n_elements))
+            zip(self.agents, [gym.spaces.Box(low=0, high=255, shape=(obs_height, obs_width, 3), dtype=np.uint8)] * self.n_elements))
         self.continuous = continuous
         if self.continuous:
             self.action_spaces = dict(zip(self.agents, [gym.spaces.Box(low=-1, high=1, shape=(1,))] * self.n_elements))
@@ -84,10 +87,6 @@ class raw_env(AECEnv, EzPickle):
             self.action_spaces = dict(zip(self.agents, [gym.spaces.Discrete(3)] * self.n_elements))
         self.state_space = gym.spaces.Box(low=0, high=255, shape=(self.screen_height, self.screen_width, 3), dtype=np.uint8)
 
-        # Define action and observation space
-        # They must be gym.spaces objects
-        # Example when using discrete actions, we have two: left and right
-        self.action_space = spaces.Discrete(2)
 
         pygame.init()
         pymunk.pygame_util.positive_y_is_up = False
@@ -115,8 +114,8 @@ class raw_env(AECEnv, EzPickle):
 
         self.done = False
 
-        self.pixels_per_position = 4
-        self.n_element_positions = 25
+        self.pixels_per_position = 1
+        self.n_element_positions = self.element_height
 
         self.screen.fill((0, 0, 0))
         self.draw_background()
@@ -149,11 +148,11 @@ class raw_env(AECEnv, EzPickle):
     def observe(self, agent):
         observation = pygame.surfarray.pixels3d(self.screen)
         i = self.agent_name_mapping[agent]
-        # Set x bounds to include 40px left and 40px right of element
-        x_high = self.wall_width + self.element_width * (i + 2)
-        x_low = self.wall_width + self.element_width * (i - 1)
-        y_high = self.screen_height - self.wall_width - self.element_body_height
-        y_low = self.wall_width
+        # values based on the background, the observation space includes all of the elements! it's a well-connected graph
+        x_low = 37
+        x_high = 625
+        y_low = 472
+        y_high = 855
         cropped = np.array(observation[x_low:x_high, y_low:y_high, :])
         observation = np.rot90(cropped, k=3)
         observation = np.fliplr(observation)
@@ -226,7 +225,7 @@ class raw_env(AECEnv, EzPickle):
     def move_element(self, element, v):
 
         def cap(y):
-            maximum_element_y = self.screen_height - self.elementPosVert[self.elementList.index(element)] # self.screen_height - self.wall_width - (self.element_height - self.element_head_height)
+            maximum_element_y = self.elementPosVert[self.elementList.index(element)] - 3*self.element_height # self.screen_height - self.wall_width - (self.element_height - self.element_head_height)
             if y > maximum_element_y:
                 y = maximum_element_y
             elif y < maximum_element_y - (self.n_element_positions * self.pixels_per_position):
@@ -255,23 +254,19 @@ class raw_env(AECEnv, EzPickle):
                                                          self.pixels_per_position)
                 if (j == 0):
                     elemPos = self.screen_height - 434 + (i * 0.53 * self.element_height)
-                    maximum_element_y = self.screen_height - elemPos
+                    maximum_element_y = elemPos - 3*self.element_height
                     element = self.add_element(
                         self.space,
-                        # self.wall_width + self.element_radius + self.element_width * i,       # x position
-                        # maximum_element_y - self.np_random.choice(possible_y_displacements)  # y position
-                        self.screen_width / 2 - self.element_width / 3.9 - (self.element_width * 0.67* i),
-                        maximum_element_y - self.np_random.choice(possible_y_displacements)
+                        self.screen_width / 2 - self.element_width / 3.9 - (self.element_width * 0.67 * i), #x position
+                        maximum_element_y - self.np_random.choice(possible_y_displacements) #y position
                     )
                 else:
                     elemPos = self.elementPosVert[len(self.elementPosVert) -1] + (0.59 * self.element_height)
-                    maximum_element_y = self.screen_height - elemPos
+                    maximum_element_y = elemPos - 3*self.element_height
                     element = self.add_element(
                         self.space,
-                        # self.wall_width + self.element_radius + self.element_width * i,       # x position
-                        # maximum_element_y - self.np_random.choice(possible_y_displacements)  # y position
-                        self.elementList[len(self.elementPosVert) - 1].position[0] + (self.element_width*0.65),
-                        maximum_element_y - self.np_random.choice(possible_y_displacements)
+                        self.elementList[len(self.elementPosVert) - 1].position[0] + (self.element_width*0.65),#x position
+                        maximum_element_y - self.np_random.choice(possible_y_displacements)#y position
                     )
                 element.velociy = 0 #TODO: fix typo
                 self.elementList.append(element)
@@ -325,6 +320,7 @@ class raw_env(AECEnv, EzPickle):
         self.infos = dict(zip(self.agents, [{} for _ in self.agents]))
 
         self.frames = 0
+        #print("I get here")
 
     def draw_background(self):
 

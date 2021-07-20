@@ -15,10 +15,8 @@ from pettingzoo.utils.conversions import parallel_wrapper_fn
 import cv2
 import manual_control
 
-# TODO list in order of priority:
 # TODO: rewrite step and reward functions, integrated with the GS output
 # TODO: write policy function!!
-# TODO: visualisation: have a number display in pygame on the top of each element. This number corresponds to the coalition identifier of that element.
 
 _image_library = {}
 
@@ -65,7 +63,7 @@ class raw_env(AECEnv, EzPickle):
         h,w,c = im.shape
         self.screen_width = w
         self.screen_height = h
-        obs_height = 855-472
+        obs_height = 855 - 472
         obs_width = 625 - 37
 
 
@@ -101,6 +99,7 @@ class raw_env(AECEnv, EzPickle):
         self.elementList = []
         self.elementPosVert = []  #Keeps track of vertical positions of elements
         self.elementRewards = []     # Keeps track of individual rewards
+        self.elementGroupings = range(self.n_elements) # Keeps track of which grouping each element belongs to
         self.recentFrameLimit = 20  # Defines what "recent" means in terms of number of frames.
         self.recentelements = set()  # Set of elements that have touched the ball recently
         self.time_penalty = time_penalty
@@ -323,6 +322,13 @@ class raw_env(AECEnv, EzPickle):
         self.draw_background()
 
         self.draw_elements()
+
+        font = pygame.font.SysFont(None, 12)
+        white = (255, 255, 255)
+        for element in self.elementList:
+            grouping = font.render(str(self.elementGroupings[self.elementList.index(element)]), True, white)
+            self.screen.blit(grouping,
+                             (element.position[0] + self.element_width/2 - grouping.get_width()/2, element.position[1] - grouping.get_height()/2))
 
     def get_local_reward(self, prev_position, curr_position):
         local_reward = .5 * (prev_position - curr_position)

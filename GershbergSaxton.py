@@ -151,9 +151,9 @@ def main(img,size,iterations):
 
     return result[0] #return the phase map, and not the amplitude map
 
-main('GSTestData/UCL16.png',16,50)
-main('GSTestData/U16.png',16,50)
-main('GSTestData/C16.png',16,50)
-main('GSTestData/L16.png',16,50)
-main('GSTestData/UCLport16.png',16,50)
-main('GSTestData/portico16.png', 16,100)
+# main('GSTestData/UCL16.png',16,50)
+# main('GSTestData/U16.png',16,50)
+# main('GSTestData/C16.png',16,50)
+# main('GSTestData/L16.png',16,50)
+# main('GSTestData/UCLport16.png',16,50)
+# main('GSTestData/portico16.png', 16,100)

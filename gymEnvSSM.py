@@ -15,7 +15,8 @@ from pettingzoo.utils.conversions import parallel_wrapper_fn
 import cv2
 import manual_control
 
-# TODO: rewrite step and reward functions, input is phasemaps
+# TODO: rewrite step and reward functions, input is phasemaps.
+#  SSIM function needs to complexify the current phasemap values?
 
 _image_library = {}
 
@@ -97,7 +98,8 @@ class raw_env(AECEnv, EzPickle):
         self.elementList = []
         self.elementPosVert = []  #Keeps track of vertical positions of elements
         self.elementRewards = []     # Keeps track of individual rewards
-        self.elementCoalitions = range(self.n_elements) # Keeps track of which Coalition each element belongs to
+        self.elementCoalitions = list(range(self.n_elements)) # Keeps track of which Coalition each element belongs to
+        self.current_phasemap = [] #current phasemap at any point
         self.recentFrameLimit = 20  # Defines what "recent" means in terms of number of frames.
         self.recentelements = set()  # Set of elements that have touched the ball recently
         self.time_penalty = time_penalty
@@ -204,6 +206,25 @@ class raw_env(AECEnv, EzPickle):
 
         element.position = (element.position[0], cap(element.position[1] - v * self.pixels_per_position))
 
+    def get_output(self):
+        self.current_phasemap = []
+        for element in (self.elementList):
+            # we round the phasemap values to 2 decimals to form fewer coalitions
+            # this rounding may be an issue for comparing to complex phasemap values
+            self.current_phasemap.append(round((element.position[1] - self.elementPosVert[self.elementList.index(element)]),2))
+            # this needs to be complex! same form as the phase maps!
+
+    def form_coalitions(self):
+        self.get_output()
+
+        if set(self.current_phasemap) != set(self.elementCoalitions):
+            for element in set(self.current_phasemap):
+                coalition_for_elem_to_join = self.elementCoalitions[self.current_phasemap.index(element)]
+                for i in range(coalition_for_elem_to_join,len(self.elementCoalitions)):
+                    if self.current_phasemap[i] == element:
+                        self.elementCoalitions[i] = coalition_for_elem_to_join
+
+
     def reset(self):
         self.space = pymunk.Space(threaded=False)
         self.add_walls()
@@ -234,7 +255,7 @@ class raw_env(AECEnv, EzPickle):
                         self.elementList[len(self.elementPosVert) - 1].position[0] + (self.element_width*0.65),#x position
                         maximum_element_y - self.np_random.choice(possible_y_displacements)#y position
                     )
-                element.velociy = 0 #TODO: fix typo
+                element.velociy = 0
                 self.elementList.append(element)
                 self.elementPosVert.append(elemPos)
 
@@ -254,6 +275,7 @@ class raw_env(AECEnv, EzPickle):
         self.infos = dict(zip(self.agents, [{} for _ in self.agents]))
 
         self.frames = 0
+        self.form_coalitions()
 
     def draw_background(self):
 
@@ -330,9 +352,9 @@ class raw_env(AECEnv, EzPickle):
             self.screen.blit(Coalition,
                              (element.position[0] + self.element_width/2 - Coalition.get_width()/2, element.position[1] - Coalition.get_height()/2))
 
-    def get_local_reward(self, prev_position, curr_position):
-        local_reward = .5 * (prev_position - curr_position)
-        return local_reward
+    # def get_local_reward(self, prev_position, curr_position):
+    #     local_reward = .5 * (prev_position - curr_position)
+    #     return local_reward
 
     def render(self, mode="human"):
         if not self.renderOn:
@@ -342,6 +364,33 @@ class raw_env(AECEnv, EzPickle):
         observation = np.array(pygame.surfarray.pixels3d(self.screen))
         pygame.display.flip()
         return np.transpose(observation, axes=(1, 0, 2)) if mode == "rgb_array" else None
+
+    def cost(self):
+        n_coalitions = len(set(self.elementCoalitions))
+        alpha = 1 #tuning parameter to control the cost
+        Cost = n_coalitions * alpha
+        return Cost
+
+    def SSIM(self, phasemap): #Structural Similarity Index Metric
+        #get current SSM's output phasemap and compare it to desired phasemap
+        # assert len(phasemap) == len(self.current_phasemap)
+        self.get_output()
+        np.reshape(self.current_phasemap, phasemap.shape)# should reshape the phasemap
+        SSIM = 0
+        for i in range(len(phasemap)):
+            SSIM += abs(phasemap[i] - self.current_phasemap[i])
+        return SSIM
+
+    def value(self):
+        sum = 0
+        for phasemap in self.phasemaps:
+            sum += self.SSIM(phasemap)
+        n_pt = len(self.phasemaps) #number of patterns
+        Value = sum/n_pt #value is the average SSIM over all the patterns
+        return Value
+
+    def reward(self):
+        return self.cost() - self.value()
 
     def step(self, action):
         if self.dones[self.agent_selection]:

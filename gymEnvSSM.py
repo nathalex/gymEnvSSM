@@ -15,8 +15,7 @@ from pettingzoo.utils.conversions import parallel_wrapper_fn
 import cv2
 import manual_control
 
-# TODO: rewrite step and reward functions, integrated with the GS output
-# TODO: write policy function!!
+# TODO: rewrite step and reward functions, input is phasemaps
 
 _image_library = {}
 
@@ -45,7 +44,7 @@ class raw_env(AECEnv, EzPickle):
 
     metadata = {'render.modes': ['human', "rgb_array"], 'name': "gymEnvSSM"}
 
-    def __init__(self, n_elements=256, local_ratio=0, time_penalty=-0.1, continuous=True, max_cycles=125):
+    def __init__(self, n_elements=256, local_ratio=0, time_penalty=-0.1, continuous=True, phasemaps = [], max_cycles=125):
         EzPickle.__init__(self, n_elements, local_ratio, time_penalty, continuous, max_cycles)
         self.n_elements = n_elements
         im = cv2.imread('visualisationImages/body.png')
@@ -121,6 +120,8 @@ class raw_env(AECEnv, EzPickle):
         )
 
         self.frames = 0
+
+        self.phasemaps = phasemaps
 
         self.has_reset = False
         self.closed = False

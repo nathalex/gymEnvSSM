@@ -24,7 +24,7 @@ _image_library = {}
 def get_image(path):
     from os import path as os_path
     cwd = os_path.dirname(__file__)
-    image = pygame.image.load(cwd + '/' + path)
+    image = pygame.image.load(cwd + '/visualisationImages/' + path)
     return image
 
 
@@ -48,18 +48,17 @@ class raw_env(AECEnv, EzPickle):
     def __init__(self, n_elements=256, local_ratio=0, time_penalty=-0.1, continuous=True, max_cycles=125):
         EzPickle.__init__(self, n_elements, local_ratio, time_penalty, continuous, max_cycles)
         self.n_elements = n_elements
-        im = cv2.imread('body.png')
+        im = cv2.imread('visualisationImages/body.png')
         h,w,c = im.shape
         self.element_body_height = h
-        im = cv2.imread('element.png')
+        im = cv2.imread('visualisationImages/element.png')
         h,w,c = im.shape
         self.element_head_height = 0
         self.element_height = h
         self.element_width = w
         self.element_radius = 0
         self.wall_width = w
-        # self.screen_width = (2 * self.wall_width) + (self.element_width * self.n_elements)
-        im = cv2.imread('background.png')
+        im = cv2.imread('visualisationImages/background.png')
         h,w,c = im.shape
         self.screen_width = w
         self.screen_height = h
@@ -99,7 +98,7 @@ class raw_env(AECEnv, EzPickle):
         self.elementList = []
         self.elementPosVert = []  #Keeps track of vertical positions of elements
         self.elementRewards = []     # Keeps track of individual rewards
-        self.elementGroupings = range(self.n_elements) # Keeps track of which grouping each element belongs to
+        self.elementCoalitions = range(self.n_elements) # Keeps track of which Coalition each element belongs to
         self.recentFrameLimit = 20  # Defines what "recent" means in terms of number of frames.
         self.recentelements = set()  # Set of elements that have touched the ball recently
         self.time_penalty = time_penalty
@@ -155,7 +154,7 @@ class raw_env(AECEnv, EzPickle):
     def enable_render(self):
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
         self.renderOn = True
-        # self.screen.blit(self.background, (0, 0))
+        self.screen.blit(self.background, (0, 0))
         self.draw_background()
         self.draw()
 
@@ -195,7 +194,7 @@ class raw_env(AECEnv, EzPickle):
     def move_element(self, element, v):
 
         def cap(y):
-            maximum_element_y = self.elementPosVert[self.elementList.index(element)] - 3*self.element_height # self.screen_height - self.wall_width - (self.element_height - self.element_head_height)
+            maximum_element_y = self.elementPosVert[self.elementList.index(element)] - 3*self.element_height
             if y > maximum_element_y:
                 y = maximum_element_y
             elif y < maximum_element_y - (self.n_element_positions * self.pixels_per_position):
@@ -300,13 +299,13 @@ class raw_env(AECEnv, EzPickle):
                 height + self.element_body_height*1.2 - (self.screen_height - self.elementPosVert[i])
             )
             line2 = pygame.Rect(
-                element.position[0] + self.element_radius + 12,  # +1 to match up to element graphics
+                element.position[0] + self.element_radius + 12,  # +12 to match up to element graphics
                 element.position[1] + self.element_radius + self.element_body_height / 2,
                 1,
                 height + self.element_body_height * 1.2 - (self.screen_height - self.elementPosVert[i])
             )
             line3 = pygame.Rect(
-                element.position[0] + self.element_radius + self.element_width - 2,  # +1 to match up to element graphics
+                element.position[0] + self.element_radius + self.element_width - 2,  # -2 to match up to element graphics
                 element.position[1] + self.element_radius + self.element_body_height / 2,
                 1,
                 height + self.element_body_height * 1.2 - (self.screen_height - self.elementPosVert[i])
@@ -326,9 +325,9 @@ class raw_env(AECEnv, EzPickle):
         font = pygame.font.SysFont(None, 12)
         white = (255, 255, 255)
         for element in self.elementList:
-            grouping = font.render(str(self.elementGroupings[self.elementList.index(element)]), True, white)
-            self.screen.blit(grouping,
-                             (element.position[0] + self.element_width/2 - grouping.get_width()/2, element.position[1] - grouping.get_height()/2))
+            Coalition = font.render(str(self.elementCoalitions[self.elementList.index(element)]), True, white)
+            self.screen.blit(Coalition,
+                             (element.position[0] + self.element_width/2 - Coalition.get_width()/2, element.position[1] - Coalition.get_height()/2))
 
     def get_local_reward(self, prev_position, curr_position):
         local_reward = .5 * (prev_position - curr_position)

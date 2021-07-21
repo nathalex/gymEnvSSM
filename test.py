@@ -4,6 +4,7 @@ import GershbergSaxton as GS
 
 # TODO: training
 
+global phase_maps
 phase_maps = []
 
 phase_maps.append(GS.main('GSTestData/UCL16.png',16,50))
@@ -12,6 +13,9 @@ phase_maps.append(GS.main('GSTestData/C16.png',16,50))
 phase_maps.append(GS.main('GSTestData/L16.png',16,50))
 phase_maps.append(GS.main('GSTestData/UCLport16.png',16,50))
 phase_maps.append(GS.main('GSTestData/portico16.png', 16,100))
+
+phase_maps = tuple(phase_maps) #this needs to be immutable and volatile (accessible to all threads)
+# print(phase_maps)
 
 env = SSM.parallel_env(n_elements=256, local_ratio=0, time_penalty=-0.1, continuous=True, phasemaps=phase_maps, max_cycles=125)
 env = ss.color_reduction_v0(env, mode='B')

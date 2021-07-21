@@ -13,6 +13,7 @@ from pettingzoo.utils import wrappers
 from gym.utils import EzPickle
 from pettingzoo.utils.conversions import parallel_wrapper_fn
 import cv2
+import GershbergSaxton as GS
 import manual_control
 
 # TODO: rewrite step and reward functions, input is phasemaps.
@@ -45,8 +46,12 @@ class raw_env(AECEnv, EzPickle):
 
     metadata = {'render.modes': ['human', "rgb_array"], 'name': "gymEnvSSM"}
 
-    def __init__(self, n_elements=256, local_ratio=0, time_penalty=-0.1, continuous=True, phasemaps = [], max_cycles=125):
+    def __init__(self, n_elements=256, local_ratio=0, time_penalty=-0.1, continuous=True, phasemaps=None, max_cycles=125):
         EzPickle.__init__(self, n_elements, local_ratio, time_penalty, continuous, max_cycles)
+        if phasemaps is None:
+            phasemaps = ()
+        self.phasemaps = phasemaps
+        print(self.phasemaps)
         self.n_elements = n_elements
         im = cv2.imread('visualisationImages/body.png')
         h,w,c = im.shape
@@ -123,8 +128,6 @@ class raw_env(AECEnv, EzPickle):
 
         self.frames = 0
 
-        self.phasemaps = phasemaps
-
         self.has_reset = False
         self.closed = False
         self.seed()
@@ -194,17 +197,29 @@ class raw_env(AECEnv, EzPickle):
         space.add(element, segment)
         return element
 
-    def move_element(self, element, v):
+    def get_elem_coalition(self, elem):
+        # we first make sure all the elements in the coalition move as one
+        indices = [i for i, x in enumerate(self.elementCoalitions) if
+                   x == self.elementCoalitions[self.elementList.index(elem)]]
+        elements = []
+        for i in indices:
+            elements.append(self.elementList[i])
+        return elements
 
-        def cap(y):
-            maximum_element_y = self.elementPosVert[self.elementList.index(element)] - 3*self.element_height
-            if y > maximum_element_y:
-                y = maximum_element_y
-            elif y < maximum_element_y - (self.n_element_positions * self.pixels_per_position):
-                y = maximum_element_y - (self.n_element_positions * self.pixels_per_position)
-            return y
+    def move_element(self, elem, v):
 
-        element.position = (element.position[0], cap(element.position[1] - v * self.pixels_per_position))
+        elements = self.get_elem_coalition(elem)
+
+        for element in elements:
+            def cap(y):
+                maximum_element_y = self.elementPosVert[self.elementList.index(element)] - 3*self.element_height
+                if y > maximum_element_y:
+                    y = maximum_element_y
+                elif y < maximum_element_y - (self.n_element_positions * self.pixels_per_position):
+                    y = maximum_element_y - (self.n_element_positions * self.pixels_per_position)
+                return y
+
+            element.position = (element.position[0], cap(element.position[1] - v * self.pixels_per_position))
 
     def get_output(self):
         self.current_phasemap = []
@@ -235,26 +250,56 @@ class raw_env(AECEnv, EzPickle):
 
         self.elementList = []
         self.elementPosVert = []
+
+        seen_coalitions = []
+        seen_heights = []
+
         for i in range(int(math.sqrt(self.n_elements))):
             for j in range(int(math.sqrt(self.n_elements))):
-                possible_y_displacements = np.arange(0, self.pixels_per_position * self.n_element_positions,
-                                                         self.pixels_per_position)
-                if (j == 0):
-                    elemPos = self.screen_height - 434 + (i * 0.53 * self.element_height)
-                    maximum_element_y = elemPos - 3*self.element_height
-                    element = self.add_element(
-                        self.space,
-                        self.screen_width / 2 - self.element_width / 3.9 - (self.element_width * 0.67 * i), #x position
-                        maximum_element_y - self.np_random.choice(possible_y_displacements) #y position
-                    )
+
+                #The elements need to move as a coalition!
+
+                if self.elementCoalitions[len(self.elementPosVert) - 1] not in seen_coalitions:
+                    seen_coalitions.append(self.elementCoalitions[len(self.elementPosVert)-1])
+                    possible_y_displacements = np.arange(0, self.pixels_per_position * self.n_element_positions,
+                                                             self.pixels_per_position)
+                    if (j == 0):
+                        elemPos = self.screen_height - 434 + (i * 0.53 * self.element_height)
+                        maximum_element_y = elemPos - 3*self.element_height
+                        element = self.add_element(
+                            self.space,
+                            self.screen_width / 2 - self.element_width / 3.9 - (self.element_width * 0.67 * i), #x position
+                            maximum_element_y - self.np_random.choice(possible_y_displacements) #y position
+                        )
+                    else:
+                        elemPos = self.elementPosVert[len(self.elementPosVert) -1] + (0.59 * self.element_height)
+                        maximum_element_y = elemPos - 3*self.element_height
+                        element = self.add_element(
+                            self.space,
+                            self.elementList[len(self.elementPosVert) - 1].position[0] + (self.element_width*0.65),#x position
+                            maximum_element_y - self.np_random.choice(possible_y_displacements)#y position
+                        )
+                    seen_heights.append(element.position[1] - elemPos)
                 else:
-                    elemPos = self.elementPosVert[len(self.elementPosVert) -1] + (0.59 * self.element_height)
-                    maximum_element_y = elemPos - 3*self.element_height
-                    element = self.add_element(
-                        self.space,
-                        self.elementList[len(self.elementPosVert) - 1].position[0] + (self.element_width*0.65),#x position
-                        maximum_element_y - self.np_random.choice(possible_y_displacements)#y position
-                    )
+                    height = seen_heights[seen_coalitions.index(self.elementCoalitions[len(self.elementPosVert) -1])]
+
+                    possible_y_displacements = np.arange(0, self.pixels_per_position * self.n_element_positions,
+                                                         self.pixels_per_position)
+                    if (j == 0):
+                        elemPos = self.screen_height - 434 + (i * 0.53 * self.element_height)
+                        element = self.add_element(
+                            self.space,
+                            self.screen_width / 2 - self.element_width / 3.9 - (self.element_width * 0.67 * i),# x position
+                            height + elemPos # y position
+                        )
+                    else:
+                        elemPos = self.elementPosVert[len(self.elementPosVert) - 1] + (0.59 * self.element_height)
+                        element = self.add_element(
+                            self.space,
+                            self.elementList[len(self.elementPosVert) - 1].position[0] + (self.element_width * 0.65),# x position
+                            height + elemPos  # y position
+                        )
+
                 element.velociy = 0
                 self.elementList.append(element)
                 self.elementPosVert.append(elemPos)
@@ -275,7 +320,7 @@ class raw_env(AECEnv, EzPickle):
         self.infos = dict(zip(self.agents, [{} for _ in self.agents]))
 
         self.frames = 0
-        self.form_coalitions()
+        #self.form_coalitions() #we actually form the coalitions in the step function!
 
     def draw_background(self):
 
@@ -371,18 +416,32 @@ class raw_env(AECEnv, EzPickle):
         Cost = n_coalitions * alpha
         return Cost
 
-    def SSIM(self, phasemap): #Structural Similarity Index Metric
+    def SSIM(self, phasemap):
+        ##Structural Similarity Index Metric
+        ##comparing prop_px to prop_sg where phasemap is prop_px and prop_sg is the
+
+        cell_space = 1
+        targ_dist = 0.5
+        res_fac = 1
+
+        k = 2 * np.pi / 340  # wave number where all the waves are the same wavelength lambda = 340m 20Hz infrasound
+
         #get current SSM's output phasemap and compare it to desired phasemap
-        # assert len(phasemap) == len(self.current_phasemap)
         self.get_output()
         np.reshape(self.current_phasemap, phasemap.shape)# should reshape the phasemap
+
+        self.current_phasemap = GS.ASM_fw(self.current_phasemap,cell_space,targ_dist,res_fac,k)
+
         SSIM = 0
         for i in range(len(phasemap)):
             SSIM += abs(phasemap[i] - self.current_phasemap[i])
+
+        self.get_output() #reset current_phasemap after altering it
         return SSIM
 
     def value(self):
         sum = 0
+        #print(self.phasemaps)
         for phasemap in self.phasemaps:
             sum += self.SSIM(phasemap)
         n_pt = len(self.phasemaps) #number of patterns
@@ -398,26 +457,30 @@ class raw_env(AECEnv, EzPickle):
 
         action = np.asarray(action)
         agent = self.agent_selection
+
+        #should we move an element if another member of its coalition moved prior?
+
         if self.continuous:
             self.move_element(self.elementList[self.agent_name_mapping[agent]], action)
         else:
             self.move_element(self.elementList[self.agent_name_mapping[agent]], action - 1)
 
+        #where do we give elements the option to leave the coalition or merge with another coalition?
+
         self.space.step(1 / 20.0)
         if self._agent_selector.is_last():
             # ball_min_x = int(self.ball.position[0] - self.ball_radius)
-            # if ball_min_x <= self.wall_width + 1:
+            # if ball_min_x <= self.wall_width + 1: #here we need to figure out when it's done
             #     self.done = True
             self.draw()
-            # local_reward = self.get_local_reward(self.lastX, ball_min_x)
-            # Opposite order due to moving right to left
+            local_reward = self.reward()
             global_reward = 0
             if not self.done:
                 global_reward += self.time_penalty
             total_reward = [global_reward * (1 - self.local_ratio)] * self.n_elements  # start with global reward
-            # local_elements_to_reward = self.get_nearby_elements()
-            # for index in local_elements_to_reward:
-            #     total_reward[index] += local_reward * self.local_ratio
+            elements_to_reward = self.get_elem_coalition(self.elementList[self.agent_name_mapping[agent]])
+            for index in elements_to_reward:
+                total_reward[index] += local_reward * self.local_ratio
             self.rewards = dict(zip(self.agents, total_reward))
             # self.lastX = ball_min_x
             self.frames += 1
@@ -435,3 +498,4 @@ class raw_env(AECEnv, EzPickle):
         self.agent_selection = self._agent_selector.next()
         self._cumulative_rewards[agent] = 0
         self._accumulate_rewards()
+        self.form_coalitions() #temporary placement of the coalition formation

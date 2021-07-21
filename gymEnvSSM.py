@@ -16,8 +16,8 @@ import cv2
 import GershbergSaxton as GS
 import manual_control
 
-# TODO: rewrite step and reward functions, input is phasemaps.
-#  SSIM function needs to complexify the current phasemap values?
+
+# TODO: allow agents to leave coalitions!
 
 _image_library = {}
 
@@ -46,12 +46,11 @@ class raw_env(AECEnv, EzPickle):
 
     metadata = {'render.modes': ['human', "rgb_array"], 'name': "gymEnvSSM"}
 
-    def __init__(self, n_elements=256, local_ratio=0, time_penalty=-0.1, continuous=True, phasemaps=None, max_cycles=125):
-        EzPickle.__init__(self, n_elements, local_ratio, time_penalty, continuous, max_cycles)
+    def __init__(self, n_elements=256, local_ratio=0, time_penalty=-0.1, continuous=True, phasemaps:tuple = None, max_cycles=125):
+        EzPickle.__init__(self, n_elements, local_ratio, time_penalty, continuous, phasemaps, max_cycles)
         if phasemaps is None:
             phasemaps = ()
         self.phasemaps = phasemaps
-        print(self.phasemaps)
         self.n_elements = n_elements
         im = cv2.imread('visualisationImages/body.png')
         h,w,c = im.shape
@@ -226,7 +225,7 @@ class raw_env(AECEnv, EzPickle):
         for element in (self.elementList):
             # we round the phasemap values to 2 decimals to form fewer coalitions
             # this rounding may be an issue for comparing to complex phasemap values
-            self.current_phasemap.append(round((element.position[1] - self.elementPosVert[self.elementList.index(element)]),2))
+            self.current_phasemap.append(abs(round((element.position[1] - self.elementPosVert[self.elementList.index(element)]),2)))
             # this needs to be complex! same form as the phase maps!
 
     def form_coalitions(self):
@@ -412,9 +411,16 @@ class raw_env(AECEnv, EzPickle):
 
     def cost(self):
         n_coalitions = len(set(self.elementCoalitions))
-        alpha = 1 #tuning parameter to control the cost
+        alpha = 7 #tuning parameter to control the cost
         Cost = n_coalitions * alpha
         return Cost
+
+
+    def prop(self, phasemap, cell_spacing, target_dist, res, k):
+        aperture = ((phasemap != 0).astype(int))
+
+        lpp = aperture * np.exp(1j * phasemap)
+        return GS.ASM_fw(lpp, cell_spacing, target_dist, res, k)
 
     def SSIM(self, phasemap):
         ##Structural Similarity Index Metric
@@ -428,20 +434,24 @@ class raw_env(AECEnv, EzPickle):
 
         #get current SSM's output phasemap and compare it to desired phasemap
         self.get_output()
-        np.reshape(self.current_phasemap, phasemap.shape)# should reshape the phasemap
+        self.current_phasemap = np.reshape(self.current_phasemap, phasemap.shape)# should reshape the phasemap
 
-        self.current_phasemap = GS.ASM_fw(self.current_phasemap,cell_space,targ_dist,res_fac,k)
+        max_height = 3*self.element_height
+        self.current_phasemap = self.current_phasemap/max_height #value between 0 and 1
+
+        self.current_phasemap = self.prop(self.current_phasemap,cell_space,targ_dist,res_fac,k)
+
+        self.current_phasemap = abs(self.current_phasemap)
 
         SSIM = 0
         for i in range(len(phasemap)):
-            SSIM += abs(phasemap[i] - self.current_phasemap[i])
+            SSIM += sum(abs(phasemap[i] - self.current_phasemap[i]))
 
         self.get_output() #reset current_phasemap after altering it
         return SSIM
 
     def value(self):
         sum = 0
-        #print(self.phasemaps)
         for phasemap in self.phasemaps:
             sum += self.SSIM(phasemap)
         n_pt = len(self.phasemaps) #number of patterns
@@ -466,6 +476,7 @@ class raw_env(AECEnv, EzPickle):
             self.move_element(self.elementList[self.agent_name_mapping[agent]], action - 1)
 
         #where do we give elements the option to leave the coalition or merge with another coalition?
+        #maybe we need ot separate the reward function to include the cost consideration here?
 
         self.space.step(1 / 20.0)
         if self._agent_selector.is_last():
@@ -479,8 +490,8 @@ class raw_env(AECEnv, EzPickle):
                 global_reward += self.time_penalty
             total_reward = [global_reward * (1 - self.local_ratio)] * self.n_elements  # start with global reward
             elements_to_reward = self.get_elem_coalition(self.elementList[self.agent_name_mapping[agent]])
-            for index in elements_to_reward:
-                total_reward[index] += local_reward * self.local_ratio
+            for elem in elements_to_reward:
+                total_reward[self.elementList.index(elem)] += local_reward * self.local_ratio
             self.rewards = dict(zip(self.agents, total_reward))
             # self.lastX = ball_min_x
             self.frames += 1

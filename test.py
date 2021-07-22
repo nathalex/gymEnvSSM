@@ -1,25 +1,33 @@
+import os
 import SSM
 import supersuit as ss
 import GershbergSaxton as GS
-from copy import deepcopy
+import pickle
 
 # TODO: training
 
-global phase_maps
 phase_maps = []
+new_data = False #whether or not the GS data needs updating
 
-phase_maps.append(GS.main('GSTestData/UCL16.png',16,50))
-phase_maps.append(GS.main('GSTestData/U16.png',16,50))
-phase_maps.append(GS.main('GSTestData/C16.png',16,50))
-phase_maps.append(GS.main('GSTestData/L16.png',16,50))
-phase_maps.append(GS.main('GSTestData/UCLport16.png',16,50))
-phase_maps.append(GS.main('GSTestData/portico16.png', 16,100))
+if os.path.exists('GSTestData/testdata.data') and not new_data:
+    with open('GSTestData/testdata.data', 'rb') as filehandle:
+        # read the data as binary data stream
+        phase_maps = pickle.load(filehandle)
 
-phase_maps = tuple(phase_maps) #this needs to be immutable
-# print(phase_maps)
-pmcpy = deepcopy(phase_maps)
+else:
+    phase_maps.append(GS.main('GSTestData/UCL16.png', 16, 50))
+    phase_maps.append(GS.main('GSTestData/U16.png', 16, 50))
+    phase_maps.append(GS.main('GSTestData/C16.png', 16, 50))
+    phase_maps.append(GS.main('GSTestData/L16.png', 16, 50))
+    phase_maps.append(GS.main('GSTestData/UCLport16.png', 16, 50))
+    phase_maps.append(GS.main('GSTestData/portico16.png', 16, 100))
+    with open('GSTestData/testdata.data', 'wb') as filehandle:
+        # store the data as binary data stream
+        pickle.dump(phase_maps, filehandle)
 
-env = SSM.parallel_env(n_elements=256, local_ratio=0, time_penalty=-0.1, continuous=True, phasemaps=pmcpy, max_cycles=125)
+phase_maps = tuple(phase_maps)
+
+env = SSM.parallel_env(n_elements=256, local_ratio=0, time_penalty=-0.1, continuous=True, phasemaps=phase_maps, max_cycles=125)
 env = ss.color_reduction_v0(env, mode='B')
 env = ss.resize_v0(env,x_size=84, y_size=84, linear_interp=True)
 env = ss.frame_stack_v1(env, 3)

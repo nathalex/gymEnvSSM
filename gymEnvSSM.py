@@ -15,9 +15,10 @@ from pettingzoo.utils.conversions import parallel_wrapper_fn
 import cv2
 import GershbergSaxton as GS
 import manual_control
+from skimage.metrics import _structural_similarity as ssim
 
 
-# TODO: allow agents to leave coalitions!
+# TODO: define a state where no more steps are necessary, i.e. the process is done (in step function)
 
 _image_library = {}
 
@@ -242,7 +243,6 @@ class raw_env(AECEnv, EzPickle):
     def reset(self):
         self.space = pymunk.Space(threaded=False)
         self.add_walls()
-        # self.space.threads = 2
         self.space.gravity = (0.0, 750.0)
         self.space.collision_bias = .0001
         self.space.iterations = 10  # 10 is default in PyMunk
@@ -396,9 +396,6 @@ class raw_env(AECEnv, EzPickle):
             self.screen.blit(Coalition,
                              (element.position[0] + self.element_width/2 - Coalition.get_width()/2, element.position[1] - Coalition.get_height()/2))
 
-    # def get_local_reward(self, prev_position, curr_position):
-    #     local_reward = .5 * (prev_position - curr_position)
-    #     return local_reward
 
     def render(self, mode="human"):
         if not self.renderOn:
@@ -410,9 +407,10 @@ class raw_env(AECEnv, EzPickle):
         return np.transpose(observation, axes=(1, 0, 2)) if mode == "rgb_array" else None
 
     def cost(self):
+        max_num_coalitions = self.n_elements
         n_coalitions = len(set(self.elementCoalitions))
-        alpha = 7 #tuning parameter to control the cost
-        Cost = n_coalitions * alpha
+        alpha = 0.5 #tuning parameter to control the cost, between 0 and 1
+        Cost = (n_coalitions * alpha)/max_num_coalitions #normalised between 0 and 1
         return Cost
 
 
@@ -421,6 +419,12 @@ class raw_env(AECEnv, EzPickle):
 
         lpp = aperture * np.exp(1j * phasemap)
         return GS.ASM_fw(lpp, cell_spacing, target_dist, res, k)
+
+    def ssim_metric(self, imageA, imageB):
+        ## Calculate the structural similarity metric between two images or arrays of equal size
+
+        s = ssim.structural_similarity(imageA, imageB)
+        return s
 
     def SSIM(self, phasemap):
         ##Structural Similarity Index Metric
@@ -434,20 +438,17 @@ class raw_env(AECEnv, EzPickle):
 
         #get current SSM's output phasemap and compare it to desired phasemap
         self.get_output()
-        self.current_phasemap = np.reshape(self.current_phasemap, phasemap.shape)# should reshape the phasemap
+        current_prop = np.reshape(self.current_phasemap, phasemap.shape)# should reshape the phasemap
 
         max_height = 3*self.element_height
-        self.current_phasemap = self.current_phasemap/max_height #value between 0 and 1
+        current_prop = current_prop/max_height #value between 0 and 1
 
-        self.current_phasemap = self.prop(self.current_phasemap,cell_space,targ_dist,res_fac,k)
+        current_prop = abs(self.prop(current_prop,cell_space,targ_dist,res_fac,k))
 
-        self.current_phasemap = abs(self.current_phasemap)
+        pixelated_prop = abs(self.prop(phasemap, cell_space,targ_dist,res_fac,k))
 
-        SSIM = 0
-        for i in range(len(phasemap)):
-            SSIM += sum(abs(phasemap[i] - self.current_phasemap[i]))
+        SSIM = self.ssim_metric(pixelated_prop, current_prop)
 
-        self.get_output() #reset current_phasemap after altering it
         return SSIM
 
     def value(self):
@@ -480,9 +481,9 @@ class raw_env(AECEnv, EzPickle):
 
         self.space.step(1 / 20.0)
         if self._agent_selector.is_last():
-            # ball_min_x = int(self.ball.position[0] - self.ball_radius)
-            # if ball_min_x <= self.wall_width + 1: #here we need to figure out when it's done
-            #     self.done = True
+
+            # Here, we check if the training is done (ie if the reward is no longer increasing for x = 1000ish iterations
+
             self.draw()
             local_reward = self.reward()
             global_reward = 0
@@ -493,7 +494,7 @@ class raw_env(AECEnv, EzPickle):
             for elem in elements_to_reward:
                 total_reward[self.elementList.index(elem)] += local_reward * self.local_ratio
             self.rewards = dict(zip(self.agents, total_reward))
-            # self.lastX = ball_min_x
+
             self.frames += 1
         else:
             self._clear_rewards()
@@ -509,4 +510,4 @@ class raw_env(AECEnv, EzPickle):
         self.agent_selection = self._agent_selector.next()
         self._cumulative_rewards[agent] = 0
         self._accumulate_rewards()
-        self.form_coalitions() #temporary placement of the coalition formation
+        self.form_coalitions() #temporary placement of the coalition formation?

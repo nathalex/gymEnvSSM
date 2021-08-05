@@ -17,7 +17,6 @@ import GershbergSaxton as GS
 import manual_control
 from skimage.metrics import _structural_similarity as ssim
 
-
 # TODO: define a state where no more steps are necessary, i.e. the process is done (in step function)
 
 _image_library = {}
@@ -109,6 +108,7 @@ class raw_env(AECEnv, EzPickle):
         self.recentelements = set()  # Set of elements that have touched the ball recently
         self.time_penalty = time_penalty
         self.local_ratio = local_ratio
+        self.copy_elemList = []
 
         self.done = False
 
@@ -211,9 +211,13 @@ class raw_env(AECEnv, EzPickle):
             random_agent = self.np_random.choice(len(self.elementList)-1) #pick a random agent to join its coalition
             elem_index = self.elementList.index(elem)
             self.elementCoalitions[elem_index] = self.elementCoalitions[random_agent]
+            action = self.elementList[random_agent].position[1] - self.elementPosVert[random_agent] #match the height now
+            elem.position = (elem.position[0], self.elementPosVert[elem_index] + action)
         else: #move agent to its own coalition
             elem_index = self.elementList.index(elem)
             self.elementCoalitions[elem_index] = elem_index #set coalition to element number
+            elem.position = (elem.position[0], self.copy_elemList[elem_index].position[1]) #reset height
+
 
     def move_element(self, elem, v):
 
@@ -278,6 +282,8 @@ class raw_env(AECEnv, EzPickle):
                 element.velociy = 0
                 self.elementList.append(element)
                 self.elementPosVert.append(elemPos)
+
+        self.copy_elemList = self.elementList.copy()
 
         self.draw_background()
         self.draw()
@@ -452,8 +458,10 @@ class raw_env(AECEnv, EzPickle):
 
         if self.continuous:
             self.pair_element(self.elementList[self.agent_name_mapping[agent]], True) #pair element
+            self.move_element(self.elementList[self.agent_name_mapping[agent]], action) #move its coalition randomly
         else:
             self.pair_element(self.elementList[self.agent_name_mapping[agent]], False) #unpair element
+            self.move_element(self.elementList[self.agent_name_mapping[agent]], action - 1) #move the agent randomly
 
         self.space.step(1 / 20.0)
         if self._agent_selector.is_last():

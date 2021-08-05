@@ -206,6 +206,15 @@ class raw_env(AECEnv, EzPickle):
             elements.append(self.elementList[i])
         return elements
 
+    def pair_element(self, elem, pair):
+        if pair: #pair agent with a random coalition
+            random_agent = self.np_random.choice(len(self.elementList)-1) #pick a random agent to join its coalition
+            elem_index = self.elementList.index(elem)
+            self.elementCoalitions[elem_index] = self.elementCoalitions[random_agent]
+        else: #move agent to its own coalition
+            elem_index = self.elementList.index(elem)
+            self.elementCoalitions[elem_index] = elem_index #set coalition to element number
+
     def move_element(self, elem, v):
 
         elements = self.get_elem_coalition(elem)
@@ -221,26 +230,17 @@ class raw_env(AECEnv, EzPickle):
 
             element.position = (element.position[0], cap(element.position[1] - v * self.pixels_per_position))
 
-    def get_output(self):
-        self.current_phasemap = []
-        for element in (self.elementList):
-            # we round the phasemap values to 2 decimals to form fewer coalitions
-            # this rounding may be an issue for comparing to complex phasemap values
-            self.current_phasemap.append(abs(round((element.position[1] - self.elementPosVert[self.elementList.index(element)]),2)))
-            # this needs to be complex! same form as the phase maps!
 
-    def form_coalitions(self):
-        self.get_output()
-
-        if set(self.current_phasemap) != set(self.elementCoalitions):
-            for element in set(self.current_phasemap):
-                coalition_for_elem_to_join = self.elementCoalitions[self.current_phasemap.index(element)]
-                for i in range(coalition_for_elem_to_join,len(self.elementCoalitions)):
-                    if self.current_phasemap[i] == element:
-                        self.elementCoalitions[i] = coalition_for_elem_to_join
+    def set_init_heights(self): #does the inverse of get_outputs and needs to be used in reset instead of setting random values!
+        self.elementCoalitions = list(range(self.n_elements)) # first sets all the coalitions back to the original one
+        # now goes through a list of heights per image and sets the element heights back to the expected heights * max height
+        self.current_phasemap = list(self.phasemaps)
+        for i in range(len(self.current_phasemap)-1):
+            self.current_phasemap[i] = abs(self.current_phasemap[i]) * 3 * self.element_height
 
 
     def reset(self):
+        self.set_init_heights()
         self.space = pymunk.Space(threaded=False)
         self.add_walls()
         self.space.gravity = (0.0, 750.0)
@@ -250,55 +250,31 @@ class raw_env(AECEnv, EzPickle):
         self.elementList = []
         self.elementPosVert = []
 
-        seen_coalitions = []
-        seen_heights = []
+
+        # pick a random phasemap to display
+        display = self.current_phasemap[self.np_random.choice(len(self.current_phasemap)-1)]
 
         for i in range(int(math.sqrt(self.n_elements))):
             for j in range(int(math.sqrt(self.n_elements))):
 
                 #The elements need to move as a coalition!
 
-                if self.elementCoalitions[len(self.elementPosVert) - 1] not in seen_coalitions:
-                    seen_coalitions.append(self.elementCoalitions[len(self.elementPosVert)-1])
-                    possible_y_displacements = np.arange(0, self.pixels_per_position * self.n_element_positions,
-                                                             self.pixels_per_position)
-                    if (j == 0):
-                        elemPos = self.screen_height - 434 + (i * 0.53 * self.element_height)
-                        maximum_element_y = elemPos - 3*self.element_height
-                        element = self.add_element(
-                            self.space,
-                            self.screen_width / 2 - self.element_width / 3.9 - (self.element_width * 0.67 * i), #x position
-                            maximum_element_y - self.np_random.choice(possible_y_displacements) #y position
-                        )
-                    else:
-                        elemPos = self.elementPosVert[len(self.elementPosVert) -1] + (0.59 * self.element_height)
-                        maximum_element_y = elemPos - 3*self.element_height
-                        element = self.add_element(
-                            self.space,
-                            self.elementList[len(self.elementPosVert) - 1].position[0] + (self.element_width*0.65),#x position
-                            maximum_element_y - self.np_random.choice(possible_y_displacements)#y position
-                        )
-                    seen_heights.append(element.position[1] - elemPos)
+                if (j == 0):
+                    elemPos = self.screen_height - 434 + (i * 0.53 * self.element_height)
+                    maximum_element_y = elemPos - 3*self.element_height
+                    element = self.add_element(
+                        self.space,
+                        self.screen_width / 2 - self.element_width / 3.9 - (self.element_width * 0.67 * i), #x position
+                        maximum_element_y - display[i][j]
+                    )
                 else:
-                    height = seen_heights[seen_coalitions.index(self.elementCoalitions[len(self.elementPosVert) -1])]
-
-                    possible_y_displacements = np.arange(0, self.pixels_per_position * self.n_element_positions,
-                                                         self.pixels_per_position)
-                    if (j == 0):
-                        elemPos = self.screen_height - 434 + (i * 0.53 * self.element_height)
-                        element = self.add_element(
-                            self.space,
-                            self.screen_width / 2 - self.element_width / 3.9 - (self.element_width * 0.67 * i),# x position
-                            height + elemPos # y position
-                        )
-                    else:
-                        elemPos = self.elementPosVert[len(self.elementPosVert) - 1] + (0.59 * self.element_height)
-                        element = self.add_element(
-                            self.space,
-                            self.elementList[len(self.elementPosVert) - 1].position[0] + (self.element_width * 0.65),# x position
-                            height + elemPos  # y position
-                        )
-
+                    elemPos = self.elementPosVert[len(self.elementPosVert) -1] + (0.59 * self.element_height)
+                    maximum_element_y = elemPos - 3*self.element_height
+                    element = self.add_element(
+                        self.space,
+                        self.elementList[len(self.elementPosVert) - 1].position[0] + (self.element_width*0.65),#x position
+                        maximum_element_y - display[i][j]
+                    )
                 element.velociy = 0
                 self.elementList.append(element)
                 self.elementPosVert.append(elemPos)
@@ -426,7 +402,7 @@ class raw_env(AECEnv, EzPickle):
         s = ssim.structural_similarity(imageA, imageB)
         return s
 
-    def SSIM(self, phasemap):
+    def SSIM(self, phasemap,i):
         ##Structural Similarity Index Metric
         ##comparing prop_px to prop_sg where phasemap is prop_px and prop_sg is the
 
@@ -437,8 +413,7 @@ class raw_env(AECEnv, EzPickle):
         k = 2 * np.pi / 340  # wave number where all the waves are the same wavelength lambda = 340m 20Hz infrasound
 
         #get current SSM's output phasemap and compare it to desired phasemap
-        self.get_output()
-        current_prop = np.reshape(self.current_phasemap, phasemap.shape)# should reshape the phasemap
+        current_prop = np.reshape(self.current_phasemap[i], phasemap.shape)# should reshape the phasemap
 
         max_height = 3*self.element_height
         current_prop = current_prop/max_height #value between 0 and 1
@@ -453,8 +428,8 @@ class raw_env(AECEnv, EzPickle):
 
     def value(self):
         sum = 0
-        for phasemap in self.phasemaps:
-            sum += self.SSIM(phasemap)
+        for i in range(len(self.phasemaps)-1):
+            sum += self.SSIM(self.phasemaps[i], i)
         n_pt = len(self.phasemaps) #number of patterns
         Value = sum/n_pt #value is the average SSIM over all the patterns
         return Value
@@ -470,19 +445,21 @@ class raw_env(AECEnv, EzPickle):
         agent = self.agent_selection
 
         #should we move an element if another member of its coalition moved prior?
+        # where do we give elements the option to leave the coalition or merge with another coalition?
+        # maybe we need to separate the reward function to include the cost consideration here?
+
+        #HERE: instead of moving the agents, we have them join coalitions! fun!
 
         if self.continuous:
-            self.move_element(self.elementList[self.agent_name_mapping[agent]], action)
+            self.pair_element(self.elementList[self.agent_name_mapping[agent]], True) #pair element
         else:
-            self.move_element(self.elementList[self.agent_name_mapping[agent]], action - 1)
-
-        #where do we give elements the option to leave the coalition or merge with another coalition?
-        #maybe we need ot separate the reward function to include the cost consideration here?
+            self.pair_element(self.elementList[self.agent_name_mapping[agent]], False) #unpair element
 
         self.space.step(1 / 20.0)
         if self._agent_selector.is_last():
 
-            # Here, we check if the training is done (ie if the reward is no longer increasing for x = 1000ish iterations
+            # Here, we check if the training is done (ie if the reward is no longer increasing for x = 1000ish iterations,
+            # or if the coalition formed is too large)
 
             self.draw()
             local_reward = self.reward()
@@ -510,4 +487,3 @@ class raw_env(AECEnv, EzPickle):
         self.agent_selection = self._agent_selector.next()
         self._cumulative_rewards[agent] = 0
         self._accumulate_rewards()
-        self.form_coalitions() #temporary placement of the coalition formation?

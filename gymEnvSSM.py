@@ -17,6 +17,8 @@ import GershbergSaxton as GS
 import manual_control
 from skimage.metrics import _structural_similarity as ssim
 
+# TODO: verify that cost and value are still correct with new implementation
+# TODO: how is "action" in the step function used? it should inform the coalition formation!
 # TODO: define a state where no more steps are necessary, i.e. the process is done (in step function)
 
 _image_library = {}
@@ -108,7 +110,7 @@ class raw_env(AECEnv, EzPickle):
         self.recentelements = set()  # Set of elements that have touched the ball recently
         self.time_penalty = time_penalty
         self.local_ratio = local_ratio
-        self.copy_elemList = []
+        self.map_to_display = 0
 
         self.done = False
 
@@ -211,35 +213,16 @@ class raw_env(AECEnv, EzPickle):
             random_agent = self.np_random.choice(len(self.elementList)-1) #pick a random agent to join its coalition
             elem_index = self.elementList.index(elem)
             self.elementCoalitions[elem_index] = self.elementCoalitions[random_agent]
-            action = self.elementList[random_agent].position[1] - self.elementPosVert[random_agent] #match the height now
-            elem.position = (elem.position[0], self.elementPosVert[elem_index] + action)
         else: #move agent to its own coalition
             elem_index = self.elementList.index(elem)
             self.elementCoalitions[elem_index] = elem_index #set coalition to element number
-            elem.position = (elem.position[0], self.copy_elemList[elem_index].position[1]) #reset height
-
-
-    def move_element(self, elem, v):
-
-        elements = self.get_elem_coalition(elem)
-
-        for element in elements:
-            def cap(y):
-                maximum_element_y = self.elementPosVert[self.elementList.index(element)] - 3*self.element_height
-                if y > maximum_element_y:
-                    y = maximum_element_y
-                elif y < maximum_element_y - (self.n_element_positions * self.pixels_per_position):
-                    y = maximum_element_y - (self.n_element_positions * self.pixels_per_position)
-                return y
-
-            element.position = (element.position[0], cap(element.position[1] - v * self.pixels_per_position))
 
 
     def set_init_heights(self): #does the inverse of get_outputs and needs to be used in reset instead of setting random values!
         self.elementCoalitions = list(range(self.n_elements)) # first sets all the coalitions back to the original one
         # now goes through a list of heights per image and sets the element heights back to the expected heights * max height
         self.current_phasemap = list(self.phasemaps)
-        for i in range(len(self.current_phasemap)-1):
+        for i in range(len(self.current_phasemap)):
             self.current_phasemap[i] = abs(self.current_phasemap[i]) * 3 * self.element_height
 
 
@@ -255,8 +238,9 @@ class raw_env(AECEnv, EzPickle):
         self.elementPosVert = []
 
 
-        # pick a random phasemap to display
-        display = self.current_phasemap[self.np_random.choice(len(self.current_phasemap)-1)]
+        # display random phasemap
+        self.map_to_display = self.np_random.choice(len(self.current_phasemap))
+        display = self.current_phasemap[self.map_to_display]
 
         for i in range(int(math.sqrt(self.n_elements))):
             for j in range(int(math.sqrt(self.n_elements))):
@@ -283,7 +267,6 @@ class raw_env(AECEnv, EzPickle):
                 self.elementList.append(element)
                 self.elementPosVert.append(elemPos)
 
-        self.copy_elemList = self.elementList.copy()
 
         self.draw_background()
         self.draw()
@@ -367,6 +350,7 @@ class raw_env(AECEnv, EzPickle):
             self.screen.blit(self.element_sprite, (element.position[0] - self.element_radius, element.position[1] - self.element_radius - self.element_height / 2.5))
 
     def draw(self):
+        self.pre_compare(self.map_to_display) #update display post-coalitions
         self.draw_background()
 
         self.draw_elements()
@@ -387,6 +371,33 @@ class raw_env(AECEnv, EzPickle):
         observation = np.array(pygame.surfarray.pixels3d(self.screen))
         pygame.display.flip()
         return np.transpose(observation, axes=(1, 0, 2)) if mode == "rgb_array" else None
+
+    def pre_compare(self, pm): #sets the SSM to the required heights
+        non_visited_elements = list(range(len(self.elementList)))
+        display = abs(self.phasemaps[pm]) * 3 * self.element_height
+        disp_width = display.shape[0]
+        for i in non_visited_elements:
+            elements = self.get_elem_coalition(self.elementList[i])
+            sum_heights = 0
+            vals_to_change = []
+            #calculate average height in display for all the elements:
+            for element in elements:
+                elem_index = self.elementList.index(element)
+                non_visited_elements.remove(elem_index)
+                x = math.floor(elem_index/disp_width)
+                y = elem_index % disp_width
+                sum_heights += display[x][y]
+                position_in_current_phasemap = (x,y)
+                vals_to_change.append(position_in_current_phasemap)
+            avg_height = sum_heights/len(elements)
+            for j in range(len(elements)):
+                element = elements[j]
+                elem_index = self.elementList.index(element)
+                maximum_element_y = self.elementPosVert[elem_index] - (3 * self.element_height)
+                element.position = (element.position[0], maximum_element_y - avg_height)
+                self.current_phasemap[pm][vals_to_change[j][0]][vals_to_change[j][1]] = avg_height
+
+
 
     def cost(self):
         max_num_coalitions = self.n_elements
@@ -435,6 +446,7 @@ class raw_env(AECEnv, EzPickle):
     def value(self):
         sum = 0
         for i in range(len(self.phasemaps)-1):
+            self.pre_compare(i)
             sum += self.SSIM(self.phasemaps[i], i)
         n_pt = len(self.phasemaps) #number of patterns
         Value = sum/n_pt #value is the average SSIM over all the patterns
@@ -446,7 +458,6 @@ class raw_env(AECEnv, EzPickle):
     def step(self, action):
         if self.dones[self.agent_selection]:
             return self._was_done_step(action)
-
         action = np.asarray(action)
         agent = self.agent_selection
 
@@ -457,11 +468,11 @@ class raw_env(AECEnv, EzPickle):
         #HERE: instead of moving the agents, we have them join coalitions! fun!
 
         if self.continuous:
-            self.pair_element(self.elementList[self.agent_name_mapping[agent]], True) #pair element
-            self.move_element(self.elementList[self.agent_name_mapping[agent]], action) #move its coalition randomly
+            self.pair_element(self.elementList[self.agent_name_mapping[agent]], action) #pair element
         else:
-            self.pair_element(self.elementList[self.agent_name_mapping[agent]], False) #unpair element
-            self.move_element(self.elementList[self.agent_name_mapping[agent]], action - 1) #move the agent randomly
+            self.pair_element(self.elementList[self.agent_name_mapping[agent]], action - 1)
+
+
 
         self.space.step(1 / 20.0)
         if self._agent_selector.is_last():

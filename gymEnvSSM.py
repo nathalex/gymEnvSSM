@@ -210,7 +210,7 @@ class raw_env(AECEnv, EzPickle):
 
     def pair_element(self, elem, pair):
         if pair: #pair agent with a random coalition
-            random_agent = self.np_random.choice(len(self.elementList)-1) #pick a random agent to join its coalition
+            random_agent = self.np_random.choice(len(self.elementList)) #pick a random agent to join its coalition
             elem_index = self.elementList.index(elem)
             self.elementCoalitions[elem_index] = self.elementCoalitions[random_agent]
         else: #move agent to its own coalition
@@ -402,7 +402,7 @@ class raw_env(AECEnv, EzPickle):
     def cost(self):
         max_num_coalitions = self.n_elements
         n_coalitions = len(set(self.elementCoalitions))
-        alpha = 0.5 #tuning parameter to control the cost, between 0 and 1
+        alpha = 1 #tuning parameter to control the cost, between 0 and 1
         Cost = (n_coalitions * alpha)/max_num_coalitions #normalised between 0 and 1
         return Cost
 
@@ -445,7 +445,7 @@ class raw_env(AECEnv, EzPickle):
 
     def value(self):
         sum = 0
-        for i in range(len(self.phasemaps)-1):
+        for i in range(len(self.phasemaps)):
             self.pre_compare(i)
             sum += self.SSIM(self.phasemaps[i], i)
         n_pt = len(self.phasemaps) #number of patterns
@@ -453,7 +453,7 @@ class raw_env(AECEnv, EzPickle):
         return Value
 
     def reward(self):
-        return self.cost() - self.value()
+        return self.value() - self.cost()
 
     def step(self, action):
         if self.dones[self.agent_selection]:

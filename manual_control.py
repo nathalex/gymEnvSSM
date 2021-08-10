@@ -4,6 +4,7 @@ import time
 import numpy as np
 import pygame
 
+# TODO: rewrite everything!
 
 def manual_control(**kwargs):
     from gymEnvSSM import env as _env

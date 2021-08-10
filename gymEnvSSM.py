@@ -17,8 +17,6 @@ from skimage.metrics import _structural_similarity as ssim
 import os
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = 'hide'
 
-# TODO: define a state where no more steps are necessary, i.e. the process is done (in step function)
-# TODO: when it's done, the coalitions must be output
 
 _image_library = {}
 
@@ -47,12 +45,13 @@ class raw_env(AECEnv, EzPickle):
 
     metadata = {'render.modes': ['human', "rgb_array"], 'name': "gymEnvSSM"}
 
-    def __init__(self, n_elements=256, local_ratio=0, time_penalty=-0.1, continuous=True, phasemaps:tuple = None, max_cycles=125):
-        EzPickle.__init__(self, n_elements, local_ratio, time_penalty, continuous, phasemaps, max_cycles)
+    def __init__(self, n_elements=256, continuous=True, phasemaps:tuple = None, max_cycles=125, reward_precision=1000):
+        EzPickle.__init__(self, n_elements, continuous, phasemaps, max_cycles,reward_precision)
         if phasemaps is None:
             phasemaps = ()
         self.phasemaps = phasemaps
         self.n_elements = n_elements
+        self.reward_precision = reward_precision
         im = cv2.imread('visualisationImages/body.png')
         h,w,c = im.shape
         self.element_body_height = h
@@ -101,13 +100,11 @@ class raw_env(AECEnv, EzPickle):
 
         self.elementList = []
         self.elementPosVert = []  # Keeps track of vertical positions of elements
-        self.elementRewards = []     # Keeps track of individual rewards
-        self.elementCoalitions = list(range(self.n_elements)) # Keeps track of which Coalition each element belongs to
+        self.rewardsList = []  # Keeps track of rewards
+        self.elementCoalitions = list(range(self.n_elements))  # Keeps track of which Coalition each element belongs to
         self.current_phasemap = []
         self.recentFrameLimit = 20  # Defines what "recent" means in terms of number of frames.
         self.recentelements = set()  # Set of elements that have touched the ball recently
-        self.time_penalty = time_penalty
-        self.local_ratio = local_ratio
         self.map_to_display = 0
 
         self.done = False
@@ -447,7 +444,9 @@ class raw_env(AECEnv, EzPickle):
         return value
 
     def reward(self):
-        return self.value() - self.cost()
+        reward = self.value() - self.cost()
+        self.rewardsList.append(reward)
+        return reward
 
     def step(self, action):
         if self.dones[self.agent_selection]:
@@ -464,19 +463,23 @@ class raw_env(AECEnv, EzPickle):
         self.space.step(1 / 20.0)
         if self._agent_selector.is_last():
 
-            # Here, we check if the training is done (i.e. if the reward is no longer increasing for x iterations)
-            # if ball_min_x <= self.wall_width + 1:
-            #     self.done = True
+            # Here, we check if the training is done (i.e. if the reward is no longer changing for x iterations)
+            if len(self.rewardsList) >= self.reward_precision:
+                place = len(self.reward_precision) - 1
+                diff = 0
+                while diff < 0.2 and place >= self.reward_precision:
+                    diff = abs(self.rewardsList[place] - self.rewardsList[place - 1])
+                    place = place - 1
+                if place == self.reward_precision - 1:
+                    self.done = True
 
             self.draw()
-            local_reward = self.reward()
-            global_reward = 0
-            if not self.done:
-                global_reward += self.time_penalty
-            total_reward = [global_reward * (1 - self.local_ratio)] * self.n_elements  # Start with global reward
+            reward = self.reward()
+
+            total_reward = [reward] * self.n_elements  # Start with global reward
             elements_to_reward = self.get_elem_coalition(self.elementList[self.agent_name_mapping[agent]])
             for elem in elements_to_reward:
-                total_reward[self.elementList.index(elem)] += local_reward * self.local_ratio
+                total_reward[self.elementList.index(elem)] += reward
             self.rewards = dict(zip(self.agents, total_reward))
 
             self.frames += 1

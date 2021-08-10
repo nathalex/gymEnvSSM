@@ -30,7 +30,7 @@ else:
 
 phase_maps = tuple(phase_maps)
 
-env = SSM.parallel_env(n_elements=256, local_ratio=0, time_penalty=-0.1, continuous=True, phasemaps=phase_maps, max_cycles=125)
+env = SSM.parallel_env(n_elements=256, continuous=True, phasemaps=phase_maps, max_cycles=125, reward_precision=1000)
 env = ss.color_reduction_v0(env, mode='B')
 env = ss.resize_v0(env,x_size=84, y_size=84, linear_interp=True)
 env = ss.frame_stack_v1(env, 3)
@@ -41,7 +41,7 @@ env = ss.concat_vec_envs_v0(env, 8, num_cpus=4, base_class='stable_baselines3')
 env.reset()
 for _ in range(1000):
     env.render()
-    env.step(env.action_space.sample()) # Take a random action
+    env.step(env.action_space.sample())  # Take a random action
 env.close()
 
 '''

@@ -3,7 +3,7 @@
 
 This environment simulates a segmented SSM (here a phased array of transducers, or PATS) in order to optimise coalition formation of the elements using multi-agent reinforcement learning.
 
-![MARL](/ReadMeImgs/MARL.png =250x "Multi-Agent Reinforcement Learning")
+[<img src="/ReadMeImgs/MARL.png" width="250/" title="Multi-Agent Reinforcement Learning">]
 *Multi-Agent Reinforcement Learning"*
 ![PATS](/ReadMeImgs/PATS.gif "Phased Array of Transducers")
 *Phased Array of Transducers*

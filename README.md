@@ -3,8 +3,10 @@
 
 This environment simulates a segmented SSM (here a phased array of transducers, or PATS) in order to optimise coalition formation of the elements using multi-agent reinforcement learning.
 
-![MARL](/ReadMeImgs/MARL.png "Multi-Agent Reinforcement Learning")
+![MARL](/ReadMeImgs/MARL.png =250x "Multi-Agent Reinforcement Learning")
+*Multi-Agent Reinforcement Learning"*
 ![PATS](/ReadMeImgs/PATS.gif "Phased Array of Transducers")
+*Phased Array of Transducers*
 
 Using the Gershberg Saxton algorithm to get phasemaps as input, generated from test data (see https://dl.acm.org/doi/abs/10.1145/3386569.3392492),
 the goal is to optimise coalition formation for a set of images so the number of coalitions is low but the resolution of the produced images is still high.

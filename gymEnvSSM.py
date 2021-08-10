@@ -17,8 +17,6 @@ import GershbergSaxton as GS
 import manual_control
 from skimage.metrics import _structural_similarity as ssim
 
-# TODO: verify that cost and value are still correct with new implementation
-# TODO: how is "action" in the step function used? it should inform the coalition formation!
 # TODO: define a state where no more steps are necessary, i.e. the process is done (in step function)
 
 _image_library = {}
@@ -208,11 +206,13 @@ class raw_env(AECEnv, EzPickle):
             elements.append(self.elementList[i])
         return elements
 
-    def pair_element(self, elem, pair):
-        if pair: #pair agent with a random coalition
-            random_agent = self.np_random.choice(len(self.elementList)) #pick a random agent to join its coalition
+    def pair_element(self, elem, action):
+        if action > 0: #pair agent with a random coalition
+            if action > 1: #in theory this never happens
+                action = action/math.ceil(action)
+            coalition_to_join = int(action * len(self.elementList))
             elem_index = self.elementList.index(elem)
-            self.elementCoalitions[elem_index] = self.elementCoalitions[random_agent]
+            self.elementCoalitions[elem_index] = self.elementCoalitions[coalition_to_join]#[random_agent]
         else: #move agent to its own coalition
             elem_index = self.elementList.index(elem)
             self.elementCoalitions[elem_index] = elem_index #set coalition to element number
@@ -377,25 +377,26 @@ class raw_env(AECEnv, EzPickle):
         display = abs(self.phasemaps[pm]) * 3 * self.element_height
         disp_width = display.shape[0]
         for i in non_visited_elements:
-            elements = self.get_elem_coalition(self.elementList[i])
-            sum_heights = 0
-            vals_to_change = []
-            #calculate average height in display for all the elements:
-            for element in elements:
-                elem_index = self.elementList.index(element)
-                non_visited_elements.remove(elem_index)
-                x = math.floor(elem_index/disp_width)
-                y = elem_index % disp_width
-                sum_heights += display[x][y]
-                position_in_current_phasemap = (x,y)
-                vals_to_change.append(position_in_current_phasemap)
-            avg_height = sum_heights/len(elements)
-            for j in range(len(elements)):
-                element = elements[j]
-                elem_index = self.elementList.index(element)
-                maximum_element_y = self.elementPosVert[elem_index] - (3 * self.element_height)
-                element.position = (element.position[0], maximum_element_y - avg_height)
-                self.current_phasemap[pm][vals_to_change[j][0]][vals_to_change[j][1]] = avg_height
+            if i != -1:
+                elements = self.get_elem_coalition(self.elementList[i])
+                sum_heights = 0
+                vals_to_change = []
+                #calculate average height in display for all the elements:
+                for element in elements:
+                    elem_index = self.elementList.index(element)
+                    x = math.floor(elem_index/disp_width)
+                    y = elem_index % disp_width
+                    sum_heights += display[x][y]
+                    position_in_current_phasemap = (x,y)
+                    vals_to_change.append(position_in_current_phasemap)
+                avg_height = sum_heights/len(elements)
+                for j in range(len(elements)):
+                    element = elements[j]
+                    elem_index = self.elementList.index(element)
+                    maximum_element_y = self.elementPosVert[elem_index] - (3 * self.element_height)
+                    element.position = (element.position[0], maximum_element_y - avg_height)
+                    self.current_phasemap[pm][vals_to_change[j][0]][vals_to_change[j][1]] = avg_height
+                    non_visited_elements[elem_index] = -1
 
 
 

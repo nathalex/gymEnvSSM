@@ -7,7 +7,7 @@ from stable_baselines3.ppo import CnnPolicy
 from stable_baselines3 import PPO
 import time
 
-# TODO: training
+# TODO: find/write policy that can handle 256 agents, then do training
 
 phase_maps = []
 new_data = False  # Whether or not the GS data needs updating
@@ -36,6 +36,7 @@ env = ss.resize_v0(env,x_size=84, y_size=84, linear_interp=True)
 env = ss.frame_stack_v1(env, 3)
 env = ss.pettingzoo_env_to_vec_env_v0(env)
 env = ss.concat_vec_envs_v0(env, 8, num_cpus=4, base_class='stable_baselines3')
+
 
 # Random, untrained model
 env.reset()

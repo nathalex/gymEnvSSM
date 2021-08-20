@@ -10,7 +10,7 @@ This environment simulates a segmented SSM (here, using a phased array of transd
 Using the Gershberg-Saxton (GS) algorithm to get phasemaps as input, generated from test data (see https://dl.acm.org/doi/abs/10.1145/3386569.3392492),
 the goal is to optimise coalition formation for a set of images so the number of coalitions is low but the resolution of the produced images is still high.
 
-[<img src="/ReadMeImgs/SSMimage.jpg" width="600" title="SSM with output phasemap"/>](ReadMeImgs/SSMimage.jpg)
+[<img src="/ReadMeImgs/SSMimage.jpg" width="400" title="SSM with output phasemap"/>](ReadMeImgs/SSMimage.jpg)
 
 *SSM with output phasemap*
 
